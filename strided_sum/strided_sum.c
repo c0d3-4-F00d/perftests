@@ -8,7 +8,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <windows.h>
+#ifdef _WINDOWS
+    #include <windows.h>
+#endif
 
 #define NUM_FLOATS 100000
 
@@ -80,24 +82,43 @@ sumtype sum_squares_parallel_4(const eltype *arr, int size)
     return total1 + total2 + total3 + total4;
 }
 
+#ifndef _WINDOWS
+struct timespec diff( struct timespec start, struct timespec end)
+{
+    struct timespec temp;
+
+    if ((end.tv_nsec-start.tv_nsec)<0) {
+        temp.tv_sec = end.tv_sec-start.tv_sec-1;
+        temp.tv_nsec = 1000000000+end.tv_nsec-start.tv_nsec;
+    } else {
+        temp.tv_sec = end.tv_sec-start.tv_sec;
+        temp.tv_nsec = end.tv_nsec-start.tv_nsec;
+    }
+    return temp;
+}
+#endif
+
 eltype array[NUM_FLOATS];// = (float *)malloc(NUM_FLOATS * sizeof(float));
 //----------------------------------------------------------------------------
 //----------------------------------------------------------------------------
 int main() {
+#ifdef _WINDOWS
     LARGE_INTEGER freq_t, start_t, end_t;
+#else
+    struct timespec start, end;
+#endif
 
     //srand((unsigned int)time(NULL));
     fill_array(array, NUM_FLOATS);
 
+    // Time basic version
+#ifdef _WINDOWS
     QueryPerformanceFrequency(&freq_t);
 
-
-    // Time basic version
     QueryPerformanceCounter(&start_t);
     double result1 = sum_squares_basic(array, NUM_FLOATS);
     QueryPerformanceCounter(&end_t);
     double duration_usec1 = (double)(end_t.QuadPart - start_t.QuadPart) * 1000000.0 / freq_t.QuadPart;
-    
 
     // Time stride 2 version
     QueryPerformanceCounter(&start_t);
@@ -110,7 +131,24 @@ int main() {
     double result4 = sum_squares_parallel_4(array, NUM_FLOATS);
     QueryPerformanceCounter(&end_t);
     double duration_usec4 = (double)(end_t.QuadPart - start_t.QuadPart) * 1000000.0 / freq_t.QuadPart;
+#else
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
+    double result1 = sum_squares_basic(array, NUM_FLOATS);
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
+    double duration_usec1 = diff(start,end).tv_nsec / 1000;
 
+    // Time stride 2 version
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
+    double result2 = sum_squares_parallel_2(array, NUM_FLOATS);
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
+    double duration_usec2 = diff(start,end).tv_nsec / 1000;
+
+    // Time stride 4 version
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
+    double result4 = sum_squares_parallel_4(array, NUM_FLOATS);
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
+    double duration_usec4 = diff(start,end).tv_nsec / 1000;
+#endif
 
     printf("Normal    sum=%7.2f, time=%5.2f usec\n",result1, duration_usec1);
     printf("Strided 2 sum=%7.2f, time=%5.2f usec\n",result2, duration_usec2);
